@@ -15,12 +15,14 @@ namespace Secretarium.Excel
     public class MADRecPutLEIArgs
     {
         public string LEI { get; set; }
+        public bool hashed { get; set; }
         public List<MADRecPutValues> values { get; set; }
     }
 
     public class MADRecGetLEIArgs
     {
         public string LEI { get; set; }
+        public bool subscribe { get; set; }
     }
 
     public class MADRecFieldResult

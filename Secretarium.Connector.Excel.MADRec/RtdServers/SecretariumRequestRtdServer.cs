@@ -22,7 +22,7 @@ namespace Secretarium.Excel
             if (_isStarted) return;
 
             _isStarted = true;
-            SecretariumFunctions.Swss.OnMessage += OnMessage;
+            SecretariumFunctions.Scp.OnMessage += OnMessage;
         }
 
         private static void OnMessage(Byte[] data)
@@ -80,7 +80,7 @@ namespace Secretarium.Excel
                 return false;
             }
 
-            if (SecretariumFunctions.Swss.State != SwssConnector.ConnectionState.SecureConnectionEstablished)
+            if (SecretariumFunctions.Scp.State != SecureConnectionProtocol.ConnectionState.SecureConnectionEstablished)
             {
                 error = "Please connect first";
                 return false;
@@ -93,7 +93,7 @@ namespace Secretarium.Excel
                 return false;
             }
 
-            SecretariumFunctions.Swss.Send(payload);
+            SecretariumFunctions.Scp.Send(payload);
             
             return true;
         }

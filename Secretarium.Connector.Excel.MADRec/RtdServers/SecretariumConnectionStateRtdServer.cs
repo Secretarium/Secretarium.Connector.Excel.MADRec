@@ -12,9 +12,9 @@
             if (_isStarted) return;
 
             _isStarted = true;
-            SecretariumFunctions.Swss.OnStateChange += x =>
+            SecretariumFunctions.Scp.OnStateChange += x =>
             {
-                SecretariumRtdServer.SetValue(Name, SecretariumFunctions.Swss.State.ToString());
+                SecretariumRtdServer.SetValue(Name, SecretariumFunctions.Scp.State.ToString());
             };
         }
     }

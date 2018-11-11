@@ -21,6 +21,7 @@ namespace Secretarium.Excel
             XlCore.MsoThemeColorIndex.msoThemeColorAccent2,
             XlCore.MsoThemeColorIndex.msoThemeColorAccent3,
         };
+        private CustomTaskPane _secKeyTaskPane;
         private CustomTaskPane _x509TaskPane;
         private CustomTaskPane _keysTaskPane;
         
@@ -36,9 +37,14 @@ namespace Secretarium.Excel
                         <group idQ='Q:SecretariumGrpConnect' label='Secretarium'>
                           <splitButton id='loadKeySplitBtn' size='large'>
                             <button 
-                              id='loadKeyBtn' imageMso='FileDocumentEncrypt' label='Load keys'
-                              onAction='ShowX509TaskPane' />
+                              id='loadKeyBtn' image='secretarium' label='Load keys'
+                              onAction='ShowSecKeyTaskPane' />
                             <menu id='loadKeySplitBtnMenu' itemSize='large'>
+                              <button 
+                                id='loadKeyBtn1' label='Load secretarium key'
+                                image='secretarium'
+                                description='Load identification and signature keys from a Secretarium file'
+                                onAction='ShowSecKeyTaskPane' />
                               <button 
                                 id='loadKeyBtn2' label='Load from encoded keys'
                                 imageMso='FileDocumentEncrypt'
@@ -66,10 +72,47 @@ namespace Secretarium.Excel
                             supertip='Fill the active sheet with pie chart for each field retreived in the result'
                             onAction='CreateMADRecReport' />
                         </group>
+                        <group idQ='Q:SecretariumUtils' label='Utils'>
+                          <splitButton id='forceRecomputeSplitBtn' size='large'>
+                            <button 
+                              id='forceRecomputeBtn' imageMso='CalculateNow' label='Calculate selection'
+                              onAction='CalculateSelection' />
+                            <menu id='forceRecomputeSplitBtnMenu' itemSize='large'>
+                              <button 
+                                id='forceRecomputeBtn1' label='Calculate selection'
+                                imageMso='CalculateNow'
+                                description='Recompute selected cells'
+                                onAction='CalculateSelection' />
+                              <button 
+                                id='forceRecomputeBtn2' label='Force calculate selection'
+                                imageMso='CalculateFull'
+                                description='Force recomputation of selected cells'
+                                onAction='ForceCalculateSelection' />
+                            </menu>
+                          </splitButton>
+                        </group>
                       </tab>
                     </tabs>
                   </ribbon>
                 </customUI>";
+        }
+
+        public void ShowSecKeyTaskPane(IRibbonControl control)
+        {
+            if (_secKeyTaskPane == null)
+            {
+                var secKeyLoader = new LoadSecKey();
+                secKeyLoader.InitSecretarium(this);
+
+                _secKeyTaskPane = CustomTaskPaneFactory.CreateCustomTaskPane(secKeyLoader, "Secretarium");
+                _secKeyTaskPane.Visible = true;
+                _secKeyTaskPane.DockPosition = MsoCTPDockPosition.msoCTPDockPositionRight;
+                _secKeyTaskPane.Width = 500;
+            }
+            else
+            {
+                _secKeyTaskPane.Visible = true;
+            }
         }
 
         public void ShowX509TaskPane(IRibbonControl control)
@@ -112,19 +155,44 @@ namespace Secretarium.Excel
         {
             ECDsaCng key = null;
 
-            if (string.IsNullOrEmpty(SecretariumFunctions.Swss.PublicKey))
+            if (string.IsNullOrEmpty(SecretariumFunctions.Scp.PublicKey))
             {
                 MessageBox.Show("Please register you identity first", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
 
-            if(key != null && key.PublicKey().ToBase64String() != SecretariumFunctions.Swss.PublicKey)
-                SecretariumFunctions.Swss.Set(key);
+            if(key != null && key.PublicKey().ToBase64String() != SecretariumFunctions.Scp.PublicKey)
+                SecretariumFunctions.Scp.Set(key);
 
-            if (SecretariumFunctions.Swss.State.IsClosed())
-                SecretariumFunctions.Swss.Connect();
+            if (SecretariumFunctions.Scp.State.IsClosed())
+                SecretariumFunctions.Scp.Connect();
         }
-        
+
+        public void CalculateSelection(IRibbonControl control)
+        {
+            var app = (Xl.Application)ExcelDnaUtil.Application;
+            var selection = app.Selection as Xl.Range;
+            if (selection == null)
+                return;
+
+            selection.Calculate();
+        }
+
+        public void ForceCalculateSelection(IRibbonControl control)
+        {
+            var app = (Xl.Application)ExcelDnaUtil.Application;
+            var selection = app.Selection as Xl.Range;
+            if (selection == null)
+                return;
+
+            foreach(Xl.Range c in selection.Cells)
+            {
+                var f = c.FormulaR1C1;
+                c.FormulaR1C1 = "'" + f;
+                c.FormulaR1C1 = f;
+            }
+        }
+
         private void AddPieChart(Xl.Range rg, int k, string title, MADRecFieldResult mfr)
         {
             var shape = rg.Worksheet.Shapes.AddChart2(251, Xl.XlChartType.xlDoughnut);

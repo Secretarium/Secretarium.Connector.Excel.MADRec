@@ -11,8 +11,8 @@ namespace Secretarium.Excel
 {
     public class SecretariumFunctions : IExcelAddIn
     {
-        internal static SwssConnector Swss = new SwssConnector();
-        private static SwssConfig _config;
+        internal static SecureConnectionProtocol Scp = new SecureConnectionProtocol();
+        private static ScpConfig _config;
 
         internal static readonly ILog Logger = LogManager.GetLogger("SecretariumExcelAddin");
 
@@ -21,19 +21,19 @@ namespace Secretarium.Excel
             Logger.InfoFormat(@"Starting");
             
             // Config
-            _config = new SwssConfig
+            _config = new ScpConfig
             {
-                client = new SwssConfig.ClientConfig
+                client = new ScpConfig.ClientConfig
                 {
                     proofOfWorkMaxDifficulty = 18
                 },
-                secretarium = new SwssConfig.SecretariumConfig
+                secretarium = new ScpConfig.SecretariumConfig
                 {
-                    endPoint = "wss://swss.secretarium.org:5424/",
+                    endPoint = "wss://ovh1.node.secretarium.org:443/",
                     knownPubKey = "rliD_CISqPEeYKbWYdwa-L-8oytAPvdGmbLC0KdvsH-OVMraarm1eo-q4fte0cWJ7-kmsq8wekFIJK0a83_yCg=="
                 }
             };
-            Swss.Init(_config);
+            Scp.Init(_config);
 
             Logger.InfoFormat(@"Starting with endpoint:{0} and trustedley:{1}", _config.secretarium.endPoint, _config.secretarium.knownPubKey);
         }
@@ -41,10 +41,39 @@ namespace Secretarium.Excel
         public void AutoClose()
         {
             Logger.InfoFormat(@"Closing");
-            Swss.Dispose();
+            Scp.Dispose();
             Logger.InfoFormat(@"Closed");
         }
 
+
+        [ExcelFunction("Sets your identity from a Secretarium key", Category = "Secretarium", Name = "Secretarium.SetIdentityFromSecKey")]
+        public static string SetIdentityFromSecKey([ExcelArgument("Path to Secretarium key file")] string secFile, [ExcelArgument("Key password")] string password)
+        {
+            if (string.IsNullOrEmpty(secFile))
+                return "Missing Secretarium key file";
+
+            if (string.IsNullOrEmpty(password))
+                return "Missing password";
+
+            try
+            {
+                var cfg = JsonHelper.DeserializeJsonFromFileAs<ScpConfig.KeyConfig>(secFile);
+                cfg.password = password;
+                
+                if (cfg.TryGetECDsaKey(out ECDsaCng key))
+                    Scp.Set(key);
+                else
+                    return "Could not load your identity";
+            }
+            catch (Exception ex)
+            {
+                return "Could not load your identity " + ex.Message;
+            }
+
+            Logger.InfoFormat(@"New identity set:{0}", Scp.PublicKey);
+
+            return Scp.PublicKey;
+        }
 
         [ExcelFunction("Sets your identity from a X509 certificate", Category = "Secretarium", Name = "Secretarium.SetIdentityFromX509")]
         public static string SetIdentityFromX509 ([ExcelArgument("Path to X509 pfx certificate")] string pfxFile, [ExcelArgument("X509 password")] string password)
@@ -59,7 +88,7 @@ namespace Secretarium.Excel
             {
                 var x509 = X509Helper.LoadX509FromFile(pfxFile, password);
                 if (x509.GetECDsaPrivateKey() is ECDsaCng key && key.HashAlgorithm == CngAlgorithm.Sha256 && key.KeySize == 256)
-                    Swss.Set(key);
+                    Scp.Set(key);
                 else
                     return "Could not load your identity";
             }
@@ -68,9 +97,9 @@ namespace Secretarium.Excel
                 return "Could not load your identity " + ex.Message;
             }
             
-            Logger.InfoFormat(@"New identity set:{0}", Swss.PublicKey);
+            Logger.InfoFormat(@"New identity set:{0}", Scp.PublicKey);
 
-            return Swss.PublicKey;
+            return Scp.PublicKey;
         }
 
         [ExcelFunction("Sets your identity", Category = "Secretarium", Name = "Secretarium.SetIdentity")]
@@ -86,7 +115,7 @@ namespace Secretarium.Excel
             {
                 var key = ECDsaHelper.Import(publicKey.FromBase64String(), privateKey.FromBase64String());
                 if (key != null && key.HashAlgorithm == CngAlgorithm.Sha256 && key.KeySize == 256)
-                    Swss.Set(key);
+                    Scp.Set(key);
                 else
                     return "Could not load your identity";
             }
@@ -95,9 +124,9 @@ namespace Secretarium.Excel
                 return "Could not load your identity " + ex.Message;
             }
 
-            Logger.InfoFormat(@"New identity set:{0}", Swss.PublicKey);
+            Logger.InfoFormat(@"New identity set:{0}", Scp.PublicKey);
 
-            return Swss.PublicKey;
+            return Scp.PublicKey;
         }
 
         [ExcelFunction("Override Secretarium trusted key", Category = "Secretarium", Name = "Secretarium.SetTrustedKey")]
@@ -109,13 +138,13 @@ namespace Secretarium.Excel
             Logger.InfoFormat(@"New trusted key:{0}", trustedKey);
             _config.secretarium.knownPubKey = trustedKey;
 
-            Swss.Disconnect();
+            Scp.Disconnect();
 
             return "Trusted key overridden";
         }
 
-        [ExcelFunction("Override Secretarium endpoint", Category = "Secretarium", Name = "Secretarium.Demo.SetEndpoint")]
-        public static string OverrideSecretariumEndpoint([ExcelArgument("The Secretarium endpoint")] string endpoint)
+        [ExcelFunction("Override Secretarium endpoint", Category = "Secretarium", Name = "Secretarium.SetGateway")]
+        public static string OverrideSecretariumEndpoint([ExcelArgument("The Secretarium gateway endpoint")] string endpoint)
         {
             if (string.IsNullOrEmpty(endpoint))
                 return "Missing endpoint";
@@ -123,7 +152,7 @@ namespace Secretarium.Excel
             Logger.InfoFormat(@"New endpoint:{0}", endpoint);
             _config.secretarium.endPoint = endpoint;
 
-            Swss.Disconnect();
+            Scp.Disconnect();
 
             return "Endpoint overridden to " + endpoint;
         }
@@ -132,11 +161,11 @@ namespace Secretarium.Excel
         [ExcelFunction("Connect to Secretarium", Category = "Secretarium", Name = "Secretarium.Rt.Connect")]
         public static object ConnectRt()
         {
-            if (Swss.PublicKey == null)
+            if (Scp.PublicKey == null)
                 return "Please set your identity first";
 
-            if (Swss.State.IsClosed())
-                new Task(() => Swss.Connect()).Start();
+            if (Scp.State.IsClosed())
+                new Task(() => Scp.Connect()).Start();
 
             return XlCall.RTD("Secretarium.Excel.SecretariumRtdServer", null, SecretariumConnectionStateRtdServer.Name);
         }
@@ -148,14 +177,32 @@ namespace Secretarium.Excel
             return XlCall.RTD("Secretarium.Excel.SecretariumRtdServer", null, SecretariumConnectionStateRtdServer.Name);
         }
 
-        [ExcelFunction("View a message after AES256 encryption, base64 encoded", Category = "Secretarium", Name = "Secretarium.Demo.Encrypt")]
+        [ExcelFunction("View a message after AES256 encryption, base64 encoded", Category = "Secretarium", Name = "Secretarium.Encrypt")]
         public static string Encrypt([ExcelArgument("A message")] string message)
         {
-            if (Swss.SymmetricKey == null)
+            if (Scp.SymmetricKey == null)
                 return "No key defined yet, please connect first";
 
             var ivOffset = ByteHelper.GetRandom(16);
-            return message.ToBytes().AesCtrEncrypt(Swss.SymmetricKey, ivOffset).ToBase64String();
+            return message.ToBytes().AesCtrEncrypt(Scp.SymmetricKey, ivOffset).ToBase64String();
+        }
+
+        [ExcelFunction("View value after Sha256 hashing", Category = "Secretarium", Name = "Secretarium.HashSha256")]
+        public static string HashSha256( [ExcelArgument("The value")] object value)
+        {
+            if (value == null)
+                return "Invalid value";
+
+            if (!(value is string || value is int || value is double || value is bool))
+                return "Invalid value type " + value.GetType();
+
+            if (value is string)
+                return ((string)value).HashSha256().ToBase64String(false);
+            else if (value is int)
+                return ((int)value).HashSha256().ToBase64String(false);
+            else if (value is double)
+                return ((double)value).HashSha256().ToBase64String(false);
+            return ((bool)value).HashSha256().ToBase64String(false);
         }
 
         private static bool GetRequest(string DCApp, string function, string argsJson, out Request request, out string error)
@@ -229,7 +276,7 @@ namespace Secretarium.Excel
         [ExcelFunction("Send to Secretarium", Category = "Secretarium", Name = "Secretarium.RtSend")]
         public static object SendRt([ExcelArgument("The DCApp name")] string DCApp, [ExcelArgument("The function name")] string function, [ExcelArgument("The args as JSON")] string argsJson)
         {
-            if (Swss.State.IsClosed())
+            if (Scp.State.IsClosed())
                 return "Please connect first";
 
             if (string.IsNullOrWhiteSpace(argsJson) || argsJson.Length > 255)
@@ -274,7 +321,7 @@ namespace Secretarium.Excel
 
         private static object SendRt<T>(SecretariumRequestRtdServer.XlRequest xlReq, string DCApp, string function, T args) where T : class
         {
-            if (Swss.State.IsClosed())
+            if (Scp.State.IsClosed())
                 return "Please connect first";
 
             var request = new Request<T>(DCApp, function, args);
@@ -287,9 +334,9 @@ namespace Secretarium.Excel
 
 
         [ExcelFunction("Sends to the MADRec DCApp", Category = "Secretarium", Name = "MADRec.RtPut")]
-        public static object MadrecPut([ExcelArgument("The LEI")] string LEI, [ExcelArgument("The args as JSON")] string argsJson)
+        public static object MadrecPut([ExcelArgument("The LEI")] string LEI, [ExcelArgument("The args as JSON")] string argsJson, [ExcelArgument("Readiness status")] bool hashed)
         {
-            if (Swss.State.IsClosed())
+            if (Scp.State.IsClosed())
                 return "Please connect first";
 
             if (string.IsNullOrWhiteSpace(LEI))
@@ -299,46 +346,54 @@ namespace Secretarium.Excel
                 return "Invalid args";
 
             // Excel comes back to the UDF when its value updates
-            var xlRequest = new SecretariumRequestRtdServer.XlRequest("MADRec", "put", LEI, argsJson);
+            var xlRequest = new SecretariumRequestRtdServer.XlRequest("madrec", "put", LEI, argsJson);
             if(SecretariumRequestRtdServer.TryGet(xlRequest, out string requestId))
                 return XlCall.RTD("Secretarium.Excel.SecretariumRtdServer", null, SecretariumRequestRtdServer.Name, requestId);
 
             if (!argsJson.TryDeserializeJsonAs(out List<MADRecPutValues> mpv))
                 return "Invalid args";
             
-            return SendRt(xlRequest, "MADRec", "put", new MADRecPutLEIArgs { LEI = LEI, values = mpv });
+            return SendRt(xlRequest, "madrec", "put", new MADRecPutLEIArgs { LEI = LEI, values = mpv, hashed = hashed });
         }
 
         [ExcelFunction("Gets from the MADRec DCApp", Category = "Secretarium", Name = "MADRec.RtGet")]
-        public static object MadrecGet([ExcelArgument("The LEI")] string LEI)
+        public static object MadrecGet([ExcelArgument("The LEI")] string LEI, [ExcelArgument("Subscribe")] bool subscribe = true)
         {
-            if (Swss.State.IsClosed())
+            if (Scp.State.IsClosed())
                 return "Please connect first";
 
             if (string.IsNullOrWhiteSpace(LEI))
                 return "Invalid LEI";
 
             // Excel comes back to the UDF when its value updates
-            var xlRequest = new SecretariumRequestRtdServer.XlRequest("MADRec", "get", LEI);
+            var xlRequest = new SecretariumRequestRtdServer.XlRequest("madrec", "get", LEI);
             if (SecretariumRequestRtdServer.TryGet(xlRequest, out string requestId))
                 return XlCall.RTD("Secretarium.Excel.SecretariumRtdServer", null, SecretariumRequestRtdServer.Name, requestId);
 
-            return SendRt(xlRequest, "MADRec", "get", new MADRecGetLEIArgs { LEI = LEI });
+            return SendRt(xlRequest, "madrec", "get", new MADRecGetLEIArgs { LEI = LEI, subscribe = subscribe });
         }
 
         [ExcelFunction("Formatting helper for the MADRec DCApp", Category = "Secretarium", Name = "MADRec.Format.Pair")]
-        public static string MadrecFormatPair([ExcelArgument("The field name")] string name, [ExcelArgument("The field value")] object value)
+        public static string MadrecFormatPair([ExcelArgument("The field name")] string name, [ExcelArgument("The field value")] object value, [ExcelArgument("hash")] bool hash = true)
         {
             if (string.IsNullOrWhiteSpace(name))
                 return "Invalid name";
 
             if (value == null)
                 return "Invalid value";
+            
+            if (!(value is string || value is int || value is double || value is bool))
+                return "Invalid value type " + value.GetType();
 
-            if (value is string || value is int || value is double || value is bool)
-                return new MADRecContrib { name = name, value = value }.ToJson(true);
+            if (hash)
+            {
+                if (value is string) value = ((string)value).HashSha256().ToBase64String(false);
+                else if (value is int) value = ((int)value).HashSha256().ToBase64String(false);
+                else if (value is double) value = ((double)value).HashSha256().ToBase64String(false);
+                else value = ((bool)value).HashSha256().ToBase64String(false);
+            }
 
-            return "Invalid value type " + value.GetType();
+            return new MADRecContrib { name = name, value = value }.ToJson(true);
         }
 
         [ExcelFunction("Formatting helper for the MADRec DCApp", Category = "Secretarium", Name = "MADRec.Format.Pairs")]
@@ -422,6 +477,26 @@ namespace Secretarium.Excel
                 return "Invalid args";
 
             return new MADRecPutLEIArgs { LEI = LEI, values = mpv }.ToJson(true);
+        }
+
+        [ExcelFunction("Sends to the MADRec DCApp", Category = "Secretarium", Name = "MADRec.Format.Verify")]
+        public static object MadrecVerify([ExcelArgument("The field name")] string field, [ExcelArgument("The value")] object value = null)
+        {
+            if (string.IsNullOrWhiteSpace(field) || !MADRecFormats.MADREC_FIELDS.Contains(field))
+                return "Invalid field name";
+
+            if (value == null || (value is string && string.IsNullOrEmpty(value as string)))
+            {
+                if (field == "LEI")
+                    return "Invalid value";
+                else
+                    return "";
+            }
+
+            if (MADRecFormats.Verify(field, ref value, out string error))
+                return value;
+
+            return "ERROR:" + error;
         }
 
         [ExcelFunction("Extract one field report from a MADRec result", Category = "Secretarium", Name = "MADRec.Extract.ToPieChartData")]

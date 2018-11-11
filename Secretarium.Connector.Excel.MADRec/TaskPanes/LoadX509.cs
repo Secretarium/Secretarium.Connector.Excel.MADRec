@@ -97,7 +97,7 @@ namespace Secretarium.Excel
                 var key = x509.GetECDsaPrivateKey() as ECDsaCng;
                 if (key != null && key.HashAlgorithm == CngAlgorithm.Sha256 && key.KeySize == 256)
                 {
-                    SecretariumFunctions.Swss.Set(key);
+                    SecretariumFunctions.Scp.Set(key);
                     LoadImg = _xlRibbon.LoadImage("success") as Bitmap;
                     ErrorText = " ";
                 }

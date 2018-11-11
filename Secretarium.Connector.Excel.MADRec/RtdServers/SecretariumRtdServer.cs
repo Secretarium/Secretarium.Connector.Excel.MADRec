@@ -47,7 +47,7 @@ namespace Secretarium.Excel
             _topicsToRequestId = new Dictionary<int, string>();
 
             // This Windows.Forms Single threaded (UI thread) timer must be started in this correct COM appartment
-            _timer = new System.Windows.Forms.Timer { Interval = 500 };
+            _timer = new System.Windows.Forms.Timer { Interval = 1000 };
             _timer.Tick += (object sender, EventArgs args) =>
             {
                 _timer.Stop();
@@ -62,7 +62,7 @@ namespace Secretarium.Excel
 
                 _timer.Start();
             };
-            _timer.Interval = 500;
+            _timer.Interval = 1000;
 
             if (Logger.IsDebugEnabled)
                 Logger.Debug(@"RequestRtdServer started");

@@ -1,16 +1,19 @@
-﻿using System;
+using System;
 using System.Windows.Forms;
 using System.Runtime.InteropServices;
+using System.IO;
 using Secretarium.Helpers;
 using System.Drawing;
 using ExcelDna.Integration.CustomUI;
 using System.ComponentModel;
+using System.Security.Cryptography;
 
 namespace Secretarium.Excel
 {
     [ComVisible(true)]
-    public partial class LoadKeys : UserControl, ISecretariumCustomTaskPane, INotifyPropertyChanged
+    public partial class LoadSecKey : UserControl, ISecretariumCustomTaskPane, INotifyPropertyChanged
     {
+        private string _secKeyFilePath = null;
         private ExcelRibbon _xlRibbon = null;
 
         #region Bindings
@@ -52,11 +55,11 @@ namespace Secretarium.Excel
         #endregion
 
 
-        public LoadKeys()
+        public LoadSecKey()
         {
             InitializeComponent();
-            keyLoadErrorLabel.DataBindings.Add("Text", this, "ErrorText");
-            keyLoadImg.DataBindings.Add("Image", this, "LoadImg", true);
+            secKeyLoadErrorLabel.DataBindings.Add("Text", this, "ErrorText");
+            secKeyLoadImg.DataBindings.Add("Image", this, "LoadImg", true);
         }
 
         public void InitSecretarium(ExcelRibbon ribbon)
@@ -64,47 +67,51 @@ namespace Secretarium.Excel
             _xlRibbon = ribbon;
         }
 
-        private void KeyBtnLoad_Click(object sender, EventArgs e)
+        private void secKeyBrowse_Click(object sender, EventArgs e)
         {
-            string b64PubKey = keyPublicInput.Text;
-            string b64PriKey = keyPrivateInput.Text;
-
-            if (string.IsNullOrEmpty(b64PubKey))
+            if (secKeyOpenFileDialog.ShowDialog() == DialogResult.OK)
             {
-                LoadImg = _xlRibbon.LoadImage("error") as Bitmap;
-                ErrorText = "Missing pulic key";
-                return;
+                if (File.Exists(secKeyOpenFileDialog.FileName))
+                {
+                    _secKeyFilePath = secKeyOpenFileDialog.FileName;
+
+                    secKeyPathInput.Text = secKeyOpenFileDialog.FileName;
+                }
             }
+        }
 
-            if (string.IsNullOrEmpty(b64PriKey))
+        private void secKeyBtnLoad_Click(object sender, EventArgs e)
+        {
+            string path = secKeyPathInput.Text;
+            if (string.IsNullOrEmpty(path) || !File.Exists(path))
             {
                 LoadImg = _xlRibbon.LoadImage("error") as Bitmap;
-                ErrorText = "Missing private key";
+                ErrorText = "file not found";
                 return;
             }
 
             try
             {
-                var key = ECDsaHelper.Import(b64PubKey.FromBase64String(), b64PriKey.FromBase64String());
-                SecretariumFunctions.Scp.Set(key);
-                LoadImg = _xlRibbon.LoadImage("success") as Bitmap;
-                ErrorText = " ";
-            }
-            catch (Exception)
-            {
-                try
+                var cfg = JsonHelper.DeserializeJsonFromFileAs<ScpConfig.KeyConfig>(path);
+                cfg.password = secKeyPasswordInput.Text;
+
+                if (cfg.TryGetECDsaKey(out ECDsaCng key))
                 {
-                    var key = ECDsaHelper.Import(b64PubKey.FromBase64String().ReverseEndianness(), b64PriKey.FromBase64String().ReverseEndianness());
                     SecretariumFunctions.Scp.Set(key);
                     LoadImg = _xlRibbon.LoadImage("success") as Bitmap;
                     ErrorText = " ";
                 }
-                catch (Exception)
+                else
                 {
                     LoadImg = _xlRibbon.LoadImage("error") as Bitmap;
-                    ErrorText = "Unable to load keys";
+                    ErrorText = "Invalid key/password";
                 }
             }
-        }        
+            catch (Exception)
+            {
+                LoadImg = _xlRibbon.LoadImage("error") as Bitmap;
+                ErrorText = "Unable to load the key, incorrect password ?";
+            }
+        }
     }
 }
