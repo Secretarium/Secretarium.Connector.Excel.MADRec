@@ -62,7 +62,6 @@ namespace Secretarium.Excel
 
                 _timer.Start();
             };
-            _timer.Interval = 1000;
 
             if (Logger.IsDebugEnabled)
                 Logger.Debug(@"RequestRtdServer started");

@@ -25,8 +25,6 @@ namespace Secretarium.Excel
         private CustomTaskPane _x509TaskPane;
         private CustomTaskPane _keysTaskPane;
         
-        //icon 0101:imageMso="EquationMatrixGallery"
-        //icon send: imageMso="DatabaseEncodeDecode"
         public override string GetCustomUI(string RibbonID)
         {
             return @"
@@ -114,7 +112,6 @@ namespace Secretarium.Excel
                 _secKeyTaskPane.Visible = true;
             }
         }
-
         public void ShowX509TaskPane(IRibbonControl control)
         {
             if (_x509TaskPane == null)
@@ -132,7 +129,6 @@ namespace Secretarium.Excel
                 _x509TaskPane.Visible = true;
             }
         }
-
         public void ShowBase64KeysTaskPane(IRibbonControl control)
         {
             if (_keysTaskPane == null)
@@ -177,7 +173,6 @@ namespace Secretarium.Excel
 
             selection.Calculate();
         }
-
         public void ForceCalculateSelection(IRibbonControl control)
         {
             var app = (Xl.Application)ExcelDnaUtil.Application;
